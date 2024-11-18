@@ -1,0 +1,1693 @@
+---
+title: "Analysis of sandy soil trial results"
+author: "Jackie Ouzman"
+date: "03/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Notes and resources
+
+https://www.youtube.com/watch?v=o5IOyr-7tVY
+
+This gives you some background in the Fishers LSD test and some further reading.
+
+*One thing to note is that if you are comparing more than 3 means (3 groups) the type 1 error increase.*
+
+* Type I errors = claiming that conditions have different means when they really don't.
+
+
+
+* Fishers is a more powerful test when comparing a smaller trial (eg with less comparison).
+
+* If your LSD is smaller than the difference (between the two means) it suggests the two means of different treatments are significantly different.
+
+You can do this manually but there are also R packages that will help.
+
+
+
+
+
+**worked through examples**
+
+
+This tutorial looks at a number of packages.
+
+
+- agricolae
+
+- lsmeans
+
+- multcompView
+
+
+https://www.researchgate.net/publication/327283926_What_is_the_proper_way_to_apply_multiple_comparison_test
+
+https://rcompanion.org/rcompanion/d_05.html
+
+
+```{r packages to use, include=FALSE}
+# Packages used in this chapter
+# The following commands will install these packages if they are not already installed:
+
+
+# if(!require(dplyr)){install.packages("dplyr")}
+# if(!require(FSA)){install.packages("FSA")}
+# if(!require(car)){install.packages("car")}
+# if(!require(agricolae)){install.packages("agricolae")}
+# if(!require(multcomp)){install.packages("multcomp")}
+# if(!require(DescTools)){install.packages("DescTools")}
+# if(!require(lsmeans)){install.packages("lsmeans")}
+# if(!require(multcompView)){install.packages("multcompView")}
+# if(!require(Rmisc)){install.packages("Rmisc")}
+# if(!require(ggplot2)){install.packages("ggplot2")}
+# if(!require(pwr)){install.packages("pwr")}
+
+library(readxl)
+library(tidyverse)
+library(dplyr)
+library(FSA) 
+library(agricolae)
+library(multcomp)
+library(multcomp)
+library(lsmeans)
+library(multcompView)
+library(Rmisc)
+
+library(ggplot2)
+library(car)
+library(DescTools)
+
+```
+
+**Create and import data sets**
+
+
+
+```{r example dataset and sandy soils dataset, message=TRUE, warning=FALSE, include=FALSE}
+
+#Example dataset
+Input =("
+Location   Aam
+Tillamook  0.0571
+Tillamook  0.0813
+Tillamook  0.0831
+Tillamook  0.0976
+Tillamook  0.0817
+Tillamook  0.0859
+Tillamook  0.0735
+Tillamook  0.0659
+Tillamook  0.0923
+Tillamook  0.0836
+Newport    0.0873
+Newport    0.0662
+Newport    0.0672
+Newport    0.0819
+Newport    0.0749
+Newport    0.0649
+Newport    0.0835
+Newport    0.0725
+Petersburg 0.0974
+Petersburg 0.1352
+Petersburg 0.0817
+Petersburg 0.1016
+Petersburg 0.0968
+Petersburg 0.1064
+Petersburg 0.1050
+Magadan    0.1033
+Magadan    0.0915
+Magadan    0.0781
+Magadan    0.0685
+Magadan    0.0677
+Magadan    0.0697
+Magadan    0.0764
+Magadan    0.0689
+Tvarminne  0.0703
+Tvarminne  0.1026 
+Tvarminne  0.0956
+Tvarminne  0.0973
+Tvarminne  0.1039
+Tvarminne  0.1045
+")
+
+
+Data = read.table(textConnection(Input),header=TRUE)
+
+
+#Specify the order of factor levels for plots and Dunnett comparison
+ 
+Data =
+mutate(Data,
+       Location = factor(Location, levels=unique(Location)))
+
+################################################################################################
+
+# sandy soils dataset
+data_file <- "X:/Therese_Jackie/Sandy_soils/Development_database/other_sites_working/stats_working/sites_merged.csv"
+
+## download the data using the specified file path above
+
+summary_data_all <- read_csv(data_file, 
+                         col_types = cols(rep_block = col_character()))
+
+site_name <- "Carwarp_Amelioration"
+site_name_output <- "Carwarp_Amelioration"
+
+##### order the Descriptors
+order <- c(
+  "Control",
+  "Unmodified_SE14.band_8",
+  "Unmodified_Bi_Agra.surface+band_8",
+  "Unmodified_Lc.surface",
+  "Unmodified_Cl.surface",
+  "Unmodified_Cl@2.5.surface_Yr18,19,20",
+  "Unmodified_Cl@3.incorp_8",
+  "Unmodified_Cl@5.incorp_8",
+  "Unmodified_Cl@5.incorp_8.Fert.surface",
+  "Unmodified_Cl@5.incorp_8.Clay.incorp_8",
+  "Unmodified_Cl@5.incorp_8.Fert.surface.Clay.incorp_8",
+  "Unmodified_Cl@7.5.surface",
+  "Unmodified_Cl@20.incorp_8",
+  "Unmodified_Cl@20.incorp_8.Fert.surface",
+  "Unmodified_Cl@20.incorp_8.Clay.incorp_8",
+  "Unmodified_Cl@20.incorp_8.Fert.surface.Clay.incorp_8",
+  "Unmodified_Fert.foliar",
+  "Unmodified_Fert.surface",
+  "Unmodified_Fert.incorp_8",
+  "Unmodified_Fert.band_8",
+  "Unmodified_K_added.surface",
+  "Unmodified_Fert.band_30",
+  "Unmodified_Fert.surface.Clay.incorp_8",
+  "Unmodified_Fert.band_30.Clay.incorp_10",
+  "Unmodified_Clay.check",
+  "Unmodified_Clay.incorp_8",
+  "Unmodified_Clay.incorp_10",
+  
+  "Spade.30_none",
+  "Spade.30_Lc@1.incorp_30",
+  "Spade.30_Lc@2.incorp_30",
+  "Spade.30_Lc@4.incorp_30",
+  "Spade.30_Lc@6.incorp_30",
+  "Spade.30_Lc@8.incorp_30",
+  "Spade.30_Lc@15.incorp_30",
+  "Spade.30_Lc@10.incorp_30",
+  "Spade.30_Lc@20.incorp_30",
+  "Spade.30_Lc@1.incorp_30.K_added.surface",
+  "Spade.30_Lc@2.incorp_30.K_added.surface",
+  "Spade.30_Lc@4.incorp_30.K_added.surface",
+  "Spade.30_Lc@6.incorp_30.K_added.surface",
+  "Spade.30_Lc@8.incorp_30.K_added.surface",
+  "Spade.30_Lc@10.incorp_30.K_added.surface",
+  "Spade.30_Lc@15.incorp_30.K_added.surface",
+  "Spade.30_Lc@20.incorp_30.K_added.surface",
+  "Spade.30_Lc.incorp_30",
+  "Spade.30_Lc.incorp_30.Fert.incorp_30",
+  "Spade.30_Lc.incorp_30.Clay.incorp_30",
+  "Spade.30_Lc.incorp_30.Fert.incorp_30.Clay.incorp_30",
+  "Spade.30_Cl.incorp_30",
+  "Spade.30_Cl.incorp_30.Gypsum.incorp_30",
+  "Spade.30_Fert.incorp_30.Clay.incorp_30",
+  "Spade.30_Com.incorp_30",
+  "Spade.30_Cereal.incorp_30",
+  "Spade.30_Vetch.incorp_30",
+  "Spade.30_Vet_Cer.incorp_30",
+  "Spade.30_Vet_Cer_In.incorp_30",
+  "Spade.30_K_added.surface",
+  "Spade.30_Fert.incorp_30",
+  "Spade.30_Fert.incorp_30.K_added.incorp_30",
+  
+  "Spade.30_Clay@250.incorp_30",
+  "Spade.30_Clay@500.incorp_30_Yr07,20",
+  "Spade.30_Clay.check",
+  "Spade.30_Clay.incorp_30",
+  "Spade.30_Gypsum.incorp_30",
+  
+  "Rip.30_none",
+  "Rip.35_none",
+  "Rip.30_Cl.surface",
+  "Rip.30_Cl@7.5.surface",
+  "Rip.30_Cl.band_30",
+  "Rip.30_Cl@7.5.band_30",
+  "Rip.30_Lc.incorp_30",
+  "Rip.30_Lc.band_30",
+  "Rip.30_Fert.surface",
+  "Rip.30_Fert.incorp_30",
+  "Rip.30_Fert.band_8",
+  "Rip.30_Fert.band_30",
+  "Rip.30IncRip_none",
+  "Rip.30+60_none",
+  "Rip.30IncRip_Gypsum.incorp_30",
+  "Rip.30+60_Lc.band_30+60",
+  
+  "Sweep.30_none",
+  "Sweep.30_Lime.incorp_30",
+  "Sweep.30_Cl@9.incorp_30",
+  "Sweep.30_Cl@6.incorp_30_Yr18,19,20",
+  "Sweep.30_Cl@6.incorp_30",
+  "Sweep.30_Cl@3.incorp_30.Lime.incorp_8",
+  "Sweep.30_Cl@3.incorp_30",
+  
+  "Rip.40_none",
+  "Rip.40IncRip_none",
+  "Rip.40IncRip_Lc.incorp_30",
+  "Rip.40IncRip_Lc.incorp_40",
+  
+  
+  "Rip.40_Lc.incorp_40",
+  "Rip.40_Fert.incorp_40",
+  
+  "Rip.45_none",
+  "Rip.45IncRip_none",
+  "Rip.45IncRip+Spade.30_none",
+  "Rip.45IncRip_Fert.incorp_45",
+  "Rip.45IncRip_Fert_Low.band_45",
+  "Rip.45IncRip_Fert_High.band_45",
+  "Rip.45IncRip_Fert_APP.band_45",
+  
+  "Rip.50_none",
+  "Rip.50_Cl.surface",
+  "Rip.50_Cl@2.5.surface_Yr18,19,20",
+  "Rip.50_Cl@7.5.surface",
+  "Rip.50_Cl@5.incorp_50",
+  "Rip.50_Cl@7.5.band_50",
+  "Rip.50_Cl@20.incorp_50",
+  "Rip.50_Cl.deep",
+  "Rip.50_Cl.band_50",
+  "Rip.50_Cl@5.incorp_50.Fert.surface",
+  "Rip.50_Cl@5.incorp_50.Clay.incorp_50",
+  "Rip.50_Cl@5.incorp_50.Fert.surface.Clay.incorp_50",
+  "Rip.50_Cl@20.incorp_50.Fert.surface",
+  "Rip.50_Cl@20.incorp_50.Clay.incorp_50",
+  "Rip.50_Cl@20.incorp_50.Fert.surface.Clay.incorp_50",
+  "Rip.50_Fert.surface",
+  "Rip.50_Clay.incorp_50",
+  "Rip.50_Fert.surface.Clay.incorp_50",
+  "Rip.50Spade.30_none",
+  "Inc.50_none",
+  "Inc.50_Cl@7.5.incorp_50",
+  "Rip.50IncRip_none",
+  "Rip.50IncRip_Cl.incorp_50",
+  "Rip.50IncRip_Cl.surface",
+  
+  "Rip.60_none",
+  "Rip.60_Cl.surface",
+  "Rip.60_Cl.band_60",
+  "Rip.60_Lc.incorp_60",
+  "Rip.60_Lc.band_60",
+  "Rip.60_Fert.band_8",
+  "Rip.60_Fert.band_60",
+  "Rip.60Spade.30_none",
+  "Rip.60Spade.30_Lc.band_30+60",
+  "Rip.60Spade.30_Lc.incorp_30+band_60",
+  "Rip.60IncRip_none",
+  "Rip.60IncRip+Spade.30_none",
+  
+  "Delving.18_none",
+  "Delving.18_SE14.band_8",
+  "DiscInv.30_none"
+  
+)
+
+
+
+
+
+      
+
+summary_data_all$Descriptors <- factor(summary_data_all$Descriptors,
+                                       levels = order)
+
+site_name <- "Carwarp_Amelioration"
+
+summary_data_site <- summary_data_all %>%
+  filter(site == site_name) %>% 
+  filter(year == 2018)
+
+```
+
+# Summary stats
+
+
+**Produce summary statistics using FSA**
+
+Example data set 
+
+```{r summary statistics example, echo=FALSE}
+
+Summarize(Aam ~ Location,
+           data=Data,
+           digits=3)
+
+
+
+```
+
+
+
+sandy soil data set
+
+```{r summary statistics sandy, echo=FALSE, message=FALSE, warning=FALSE}
+
+Summarize(yield ~ Descriptors,
+           data=summary_data_site,
+           digits=3)
+
+
+
+```
+# ANOVA 
+
+
+*Step 1a*     Fitted a linear model to data.
+
+*Step 1b*     One-way ANOVA (using type II, or I or III).
+
+*Step 1c*     Best fit of model (can be used if choosing between one-way or two-way ANOVA)
+
+*Step 1d*     Check for assumptions of analysis
+
+
+
+## Background one-way ANOVA 
+
+
+ANOVA is a statistical test for estimating how a quantitative dependent variable changes according to the levels of one or more categorical independent variables. 
+
+* ANOVA tests whether there is a difference in means of the groups at each level of the independent variable.
+
+* The null hypothesis (H0) of the ANOVA is no difference in means, and the alternate hypothesis (Ha) is that the means are different from one another.
+
+
+* **Decide what type of ANOVA you need.**
+
+* one-way ANOVA (one independent variable) 
+
+* two-way ANOVA (two independent variables)
+
+
+ANOVA tests whether any of the group means are different from the overall mean of the data by checking the variance of each individual group against the overall variance of the data. 
+
+If one or more groups falls outside the range of variation predicted by the null hypothesis (all group means are equal), then the test is statistically significant.
+
+Perform an ANOVA in R using the aov() function. 
+
+This will calculate the test statistic for ANOVA and determine whether there is significant variation among the groups formed by the levels of the independent variable.
+
+**Code in R**
+
+one.way <- aov(variable 1  ~ variable 2, data = df)
+
+summary(one.way)
+
+* The model summary first lists the independent variables being tested in the model (in this case we have only one, ‘variable 2’) and the model residuals  (‘Residual’). 
+
+* All of the variation that is not explained by the independent variables ("variable 2") is called residual variance.
+
+* The rest of the values in the output table describe the independent variable and the residuals:
+
+* The Df column displays the degrees of freedom for the independent variable (the number of levels in the variable minus 1), and the degrees of freedom for the residuals (the total number of observations minus one and minus the number of levels in the independent variables).
+
+* The Sum Sq column displays the sum of squares (a.k.a. the total variation between the group means and the overall mean).
+
+* The Mean Sq column is the mean of the sum of squares, calculated by dividing the sum of squares by the degrees of freedom for each parameter.
+
+* The F-value column is the test statistic from the F test. This is the mean square of each independent variable divided by the mean square of the residuals.
+
+* *The larger the F value, the more likely it is that the variation caused by the independent variable is real and not due to chance.*
+
+* The Pr(>F) column is the p-value of the F-statistic. 
+
+* This shows how likely it is that the F-value calculated from the test would have occurred if the null hypothesis of no difference among group means were true.
+
+* *If the p-value of the 'variable 2' variable is low (p < 0.001), then it appears that the type of 'variable 2' has a real impact on the "variable 1".*
+
+
+### **Step 1a and 1b** Fit the model and conduct One-way ANOVA 
+
+*example data set* (linear model)
+ 
+```{r fit model example, echo=FALSE, message=FALSE, warning=FALSE}
+model = lm(Aam ~ Location,
+           data=Data)
+
+
+Anova(model, type="II") # Can use type="III"
+
+   ### If you use type="III", you need the following line before the analysi
+   ### options(contrasts = c("contr.sum", "contr.poly"))
+
+                              # Produces type I sum of squares
+summary(model)     #
+
+```
+
+
+
+
+*sandy soil data set* (linear model)
+
+
+
+```{r fit model sandys, echo=FALSE, message=FALSE, warning=FALSE}
+model_sand = lm( yield ~ Descriptors,
+           data=summary_data_site)
+
+
+#anova(model_sand) 
+Anova(model_sand, type="II") # Can use type="III"
+
+   ### If you use type="III", you need the following line before the analysi
+   ### options(contrasts = c("contr.sum", "contr.poly"))
+
+                              # Produces type I sum of squares
+summary(model_sand)     #
+
+```
+
+### **Step 1b**: One-way - ANOVA Type Options 
+
+* In these example I have used Type II ANOVA.
+
+* There are other options such as Type I and Type III.
+
+* Type I should be used with caution.
+
+* When the data set is simple and balanced the Type I , II and III should give you very similar results.
+
+* In sand and the example data they all come out as significant, type I and II are the same.
+
+* Type III has a smaller P value suggesting that the test is more likely to report differences.
+
+***From Help***
+
+*The designations "type-II" and "type-III" are borrowed from SAS, but the definitions used here do not correspond precisely to those employed by SAS.* 
+
+*Type-II tests are calculated according to the principle of marginality, testing each term after all others, except ignoring the term's higher-order relatives; so-called type-III tests violate marginality, testing each term in the model after all of the others. This definition of Type-II tests corresponds to the tests produced by SAS for analysis-of-variance models, where all of the predictors are factors, but not more generally (i.e., when there are quantitative predictors). Be very careful in formulating the model for type-III tests, or the hypotheses tested will not make sense.*
+
+*As implemented here, type-II Wald tests are a generalization of the linear hypotheses used to generate these tests in linear models.*
+
+*For tests for linear models, multivariate linear models, and Wald tests for generalized linear models, Cox models, mixed-effects models, generalized linear models fit to survey data, and in the default case, Anova finds the test statistics without refitting the model. The svyglm method simply calls the default method and therefore can take the same arguments.*
+
+*The standard R anova function calculates sequential ("type-I") tests. These rarely test interesting hypotheses in unbalanced designs*
+
+
+
+
+
+
+**In summary use the type II ANOVA.**
+
+
+
+
+
+
+
+**Example data set** results for type I II III ANOVA.
+
+```{r ANOVA type example, echo=FALSE, message=FALSE, warning=FALSE}
+
+#### example ###
+
+anova_eg_I <- Anova(model, type="II") 
+anova_eg_II <- Anova(model, type="II")
+anova_eg_III <- Anova(model, type="III")
+
+
+p_value_eg_anovaI <- anova_eg_I[1,4]
+p_value_eg_anovaII <- anova_eg_II[1,4]
+p_value_eg_anovaIII <- anova_eg_III[1,4]
+
+
+
+Type_of_ANOVA <- c("anova_I", "anova_II", "anova_III")
+P_values <- c(p_value_eg_anovaI, p_value_eg_anovaII, p_value_eg_anovaIII)
+
+### make a table /df to display the results
+Type_of_ANOVA <- c("anova_I", "anova_II", "anova_III")
+P_values_type <- c(p_value_eg_anovaI, p_value_eg_anovaII, p_value_eg_anovaIII)
+
+### make a table /df to display the results
+p_value_comp_table_example <- data.frame(Type_of_ANOVA, P_values_type)
+
+p_value_comp_table_example <- p_value_comp_table_example %>% 
+  mutate(significance = case_when(
+    P_values_type < 0.001 ~ "***",
+    P_values_type <= 0.01 ~  "**",
+    P_values_type <= 0.05 ~  "*",
+    P_values_type >  0.05 ~  "ns",
+    TRUE ~ "check"
+    
+  ))
+p_value_comp_table_example
+
+```
+
+**Sands data set** results for type I II III ANOVA.
+
+
+```{r ANOVA type sandys 1, echo=FALSE, message=FALSE, warning=FALSE}
+model_sand = lm( yield ~ Descriptors,
+                 data=summary_data_site)
+
+anova_I <- Anova(model_sand, type="II") 
+anova_II <- Anova(model_sand, type="II")
+anova_III <- Anova(model_sand, type="III")
+
+
+p_value_anovaI <- anova_I[1,4]
+p_value_anovaII <- anova_II[1,4]
+p_value_anovaIII <- anova_III[1,4]
+
+
+
+Type_of_ANOVA <- c("anova_I", "anova_II", "anova_III")
+P_values <- c(p_value_anovaI, p_value_anovaII, p_value_anovaIII)
+
+### make a table /df to display the results
+p_value_comp_table <- data.frame(Type_of_ANOVA, P_values)
+p_value_comp_table <- p_value_comp_table %>% 
+  mutate(significance = case_when(
+    P_values_type < 0.001 ~ "***",
+    P_values_type <= 0.01 ~  "**",
+    P_values_type <= 0.05 ~  "*",
+    P_values_type >  0.05 ~  "ns",
+    TRUE ~ "check"
+    
+  ))
+p_value_comp_table
+
+```
+
+
+### **Step 1c** Best fit for chosen ANOVA model.
+
+In these examples I am only looking at one - way anova.
+
+But in other examples you could choose between:
+
+* one.way
+
+* two.way
+
+* interaction
+
+* blocking
+
+
+
+https://www.scribbr.com/statistics/anova-in-r/
+
+
+* Usually you’ll want to use the ‘best-fit’ model – the model that best explains the variation in the dependent variable.
+
+* The Akaike information criterion (AIC) is a good test for model fit. 
+
+* AIC calculates the information value of each model by balancing the variation explained against the number of parameters used.
+
+* In AIC model selection, we compare the information value of each model and choose the one with the *lowest AIC value* (a lower number means more information explained!)
+
+
+**AIC model selection**
+* Select model with the lowest AIC value.
+
+* eg The two-way model has the lowest AIC value, and 71% of the AIC weight, 
+
+* which means that it explains 71% of the total variation in the dependent variable that can be explained by the full set of models.
+
+* The model with blocking term contains an additional 15% of the AIC weight, but because it is more than 2 delta-AIC worse than the best model, it probably is not’t good enough to include in your results.
+
+
+
+**Notes:**
+
+*I can't get this package to load - can't work this out does not seem to have dependencies.*
+
+*It's not a problem for these example.*
+
+*But it looks like this package might be useful for other analysis.*
+
+```{r ANOVA type sandys, message=FALSE, warning=FALSE, include=FALSE}
+# library(broom)
+# library(ggpubr)
+# library(AICcmodavg)
+# 
+# model.set <- list(one.way, two.way, interaction, blocking)
+# model.names <- c("one.way", "two.way", "interaction", "blocking")
+# 
+# aictab(model.set, modnames = model.names)
+
+```
+
+
+
+
+
+
+
+
+
+
+### **Step 1d Assumptions of the model**
+
+
+
+
+* A histogram of residuals from a linear model.  
+
+* The distribution of these residuals should be approximately normal.
+
+
+
+
+* The diagnostic plots show the unexplained variance (residuals) across the range of the observed data.
+
+* Each plot gives a specific piece of information about the model fit, but it’s enough to know that the red line representing the mean of the residuals should be horizontal and centered on zero (or on one, in the scale-location plot), meaning that there are no large outliers that would cause bias in the model.
+
+* The normal Q-Q plot plots a regression between the theoretical residuals of a perfectly-homoscedastic model and the actual residuals of your model, so the closer to a slope of 1 this is the better. This Q-Q plot is very close, with only a bit of deviation.
+
+* From these diagnostic plots we can say that the model fits the assumption of homoscedasticity.
+
+
+
+* A plot of residuals vs. predicted values.  
+
+* The residuals should be unbiased and homoscedastic.  
+
+* For an illustration of these properties, see this diagram by Steve Jost at DePaul University: condor.depaul.edu/sjost/it223/documents/resid-plots.gif.
+
+* If your model does not’t fit the assumption of homoscedasticity, you can try the Kruskall-Wallis test instead.
+
+
+comments: They look OK to me unbiased and homoscedastic (even spread across plot no obvious groupings)
+
+
+
+
+
+
+
+
+**Model example**
+
+```{r assumptions example, echo=FALSE}
+hist(residuals(model),
+     col="darkgray")
+
+par(mfrow=c(2,2))
+plot(model)
+par(mfrow=c(1,1))
+```
+
+**Sands example**
+
+
+
+Look like a normal distribution to me.
+
+```{r assumptions sandy, echo=FALSE}
+hist(residuals(model_sand),
+     col="darkgray")
+
+par(mfrow=c(2,2))
+plot(model_sand)
+par(mfrow=c(1,1))
+```
+
+
+
+```{r Residuals example, eval=FALSE, include=FALSE}
+
+plot(fitted(model),
+     residuals(model))
+```
+
+
+
+```{r Residuals sand, eval=FALSE, include=FALSE}
+
+plot(fitted(model_sand),
+     residuals(model_sand))
+```
+
+### **Step 1d Assumptions** of the ANOVA
+
+* Bartlett’s test and Levene’s test can be used to check the homoscedasticity of groups from a one-way anova.  
+
+* A significant result for these tests (p < 0.05) suggests that groups are heteroscedastic.  
+
+* One approach with heteroscedastic data in a one way anova is to use the Welch correction with the one-way.test function in the native stats package.  
+
+* A more versatile approach is to use the white.adjust=TRUE option in the Anova function from the car package.
+
+
+**example data**
+Bartlett test
+
+```{r Residuals Bartlett, echo=FALSE}
+
+### Bartlett test for homogeneity of variance
+
+bartlett.test(Aam ~ Location,
+              data = Data) 
+```
+
+Levene test
+
+```{r Residuals Levene, echo=FALSE}
+### Levene test for homogeneity of variance
+
+library(car)
+
+leveneTest(Aam ~ Location,
+           data = Data)
+
+```
+
+
+
+**Sands example**
+Bartlett test
+
+```{r Residuals Bartlett sand, echo=FALSE}
+
+### Bartlett test for homogeneity of variance
+
+bartlett.test(yield ~ Descriptors,
+              data = summary_data_site) 
+
+ 
+```
+
+Levene test
+
+```{r Residuals Levene sand, echo=FALSE}
+### Levene test for homogeneity of variance
+
+#library(car)
+
+leveneTest(yield ~ Descriptors,
+              data = summary_data_site)
+
+```
+
+In these examples test for homogeneity of variance has p values of
+
+* Bartlett example data: p = 0.6565
+
+* Bartlett sample data:  p  = 0.5951
+
+* A significant result for these tests (p < 0.05) suggests that groups are heteroscedastic.
+
+* These examples are not heteroscedastic.
+
+* It is safe to use the normal test
+
+
+
+
+### **Step 1a&b IF REQUIRED fit a linear model and use ANOVA for data with unequal variances or heteroscedasticity
+
+**example data**
+
+Welch’s anova - unequal variances
+
+```{r ANOVA Welch unequal variances example 1, echo=FALSE}
+
+
+### Welch’s anova for unequal variances
+
+oneway.test(Aam ~ Location,
+            data=Data,
+            var.equal=FALSE)
+
+ 
+```
+
+White-adjusted anova - heteroscedasticity
+
+* A more versatile approach is to use the white.adjust=TRUE option in the Anova function from the car package.
+
+
+
+```{r ANOVA Welch unequal variances example 2, echo=FALSE}
+
+### White-adjusted anova for heteroscedasticity
+
+model = lm(Aam ~ Location,
+           data=Data)
+
+#library(car)
+
+Anova(model, Type="II",
+      white.adjust=TRUE)
+ 
+```
+ 
+
+ 
+
+**sands data**
+
+Welch’s anova - unequal variances
+
+```{r ANOVA Welch unequal variances sand, echo=FALSE}
+
+
+### Welch’s anova for unequal variances
+
+oneway.test(yield ~ Descriptors,
+              data = summary_data_site,
+            var.equal=FALSE)
+
+ 
+```
+
+White-adjusted anova - heteroscedasticity
+
+```{r ANOVA Welch unequal variances example 3, echo=FALSE}
+
+### White-adjusted anova for heteroscedasticity
+
+model_White_adjusted = lm(yield ~ Descriptors,
+              data = summary_data_site)
+
+#library(car)
+
+Anova(model_White_adjusted, Type="II",
+      white.adjust=TRUE)
+ 
+```
+
+ 
+
+
+
+
+
+# Post Hoc analysis or multiple comparisons 
+
+* This is done after the ANOVA analysis 
+* Once you get an ANOVA with significant differences
+
+
+There are multiple options for what test to use:
+
+* Tukey comparisons in agricolae package
+* LSD comparisons in agricolae package
+* Multiple comparisons in multcomp package
+* Multiple comparisons to a control in multcomp package
+* Multiple comparisons to a control with Dunnett test
+* Multiple comparisons least square means
+
+
+
+## Tukey and Least Significant Difference mean separation tests (pairwise comparisons)
+
+Tukey and other multiple comparison tests can be performed with a handful of functions.  
+
+The functions TukeyHSD, HSD.test, and LSD.test are probably not appropriate for cases where there are unbalanced data or unequal variances among levels of the factor, though TukeyHSD does make an adjustment for mildly unbalanced data.  
+
+* See note at the start, as the number of comparison increase, the best options for analysis change.
+* LSD is good option for 3 or less mean comparison.
+
+
+#### Tukey comparisons in agricolae package 
+
+**example data**
+
+```{r Tukey with agricolae example, echo=FALSE, message=FALSE, warning=FALSE}
+#library(agricolae)
+
+(HSD.test(model, "Location"))          # outer parentheses print result
+
+```
+
+**sands data**
+
+
+
+```{r Tukey with agricolae sand, echo=FALSE, message=FALSE, warning=FALSE}
+#library(agricolae)
+
+(HSD.test(model_sand, "Descriptors"))          # outer parentheses print result
+
+```
+
+
+#### LSD comparisons in agricolae package
+
+**example data**
+
+
+* Note in this example the LSD does not appear in the R output.
+* I found a post says that:
+"No LSD value is given in the output because it appears that this output is only included when you have perfectly balanced data, and the data you have provided are unbalanced"
+
+
+* Also choosing the correct p.adj value is important.
+
+These are the options:
+
+*none
+
+*holm
+
+*hommel
+
+*hochberg
+
+*"bonferroni
+
+*BH
+
+*BY
+
+*fdr
+
+
+
+I have selected **none** which is t-student
+
+
+```{r LSD with agricolae example, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+(LSD.test(model, "Location",   # outer parentheses print result
+           alpha = 0.05,      
+           p.adj="none"))      # see ?p.adjust for options
+
+```
+
+**Sand data**
+
+
+
+```{r LSD with agricolae sand, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+
+
+agricolae_LSD_output_sand <- (LSD.test(model_sand, "Descriptors",   # outer parentheses print result
+           alpha = 0.05,      
+           p.adj="none"))      # see ?p.adjust for options"none" is t-student.
+
+
+agricolae_LSD_output_sand
+
+#Extract the LSD value from the anlsysis 
+agricolae_LSD_output_sand$statistics$LSD
+
+```
+
+
+
+
+#### Multiple comparisons in multcomp package
+
+**example data**
+
+
+* Note that “Tukey” here **does not mean Tukey-adjusted** comparisons.  
+
+* It just sets up a matrix to compare each mean to each other mean.
+
+* Compact letter display for report and orders it.
+
+* This function extracts all the information from glht, summary.glht or confint.glht objects that is required to create a compact letter display of all pair-wise comparisons
+
+
+```{r Multiple comparisons in multcomp example, echo=FALSE, message=FALSE, warning=FALSE}
+#library(multcomp)
+
+mc = glht(model,
+          mcp(Location = "Tukey"))
+
+mcs = summary(mc, test=adjusted("single-step"))
+
+mcs
+
+   ### Adjustment options: "none", "single-step", "Shaffer",
+   ###                     "Westfall", "free", "holm", "hochberg",
+   ###                     "hommel", "bonferroni", "BH", "BY", "fdr"
+
+
+
+
+```
+
+
+```{r Compact letter display example order, include=TRUE} 
+
+cld(mcs,
+    level=0.05,
+    decreasing=TRUE)
+```
+
+**sands data**
+
+
+
+```{r Multiple comparisons in multcomp sand, echo=FALSE, message=FALSE, warning=FALSE}
+#library(multcomp)
+
+mc_sand = glht(model_sand,
+          mcp(Descriptors = "Tukey"))
+
+mc_sand_s = summary(mc_sand, test=adjusted("single-step"))
+
+mc_sand_s
+
+   ### Adjustment options: "none", "single-step", "Shaffer",
+   ###                     "Westfall", "free", "holm", "hochberg",
+   ###                     "hommel", "bonferroni", "BH", "BY", "fdr"
+
+
+cld(mc_sand_s,
+    level=0.05,
+    decreasing=TRUE)
+
+```
+
+
+
+#### Multiple comparisons to a control in multcomp package
+
+**example data**
+
+
+* Note the control is the first level of the factor
+
+* ? is this just the first one on the list?
+
+```{r comparision to control multcomp  example, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+
+mc_control = glht(model,
+          mcp(Location = "Dunnett"))
+
+summary(mc_control, test=adjusted("single-step"))
+
+   ### Adjustment options: "none", "single-step", "Shaffer",
+   ###                     "Westfall", "free", "holm", "hochberg",
+   ###                     "hommel", "bonferroni", "BH", "BY", "fdr"
+
+
+```
+
+**sand data**
+
+```{r comparision to control multcomp  sand, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+
+mc_control = glht(model_sand,
+          mcp(Descriptors = "Dunnett"))
+
+summary(mc_control, test=adjusted("single-step"))
+
+   ### Adjustment options: "none", "single-step", "Shaffer",
+   ###                     "Westfall", "free", "holm", "hochberg",
+   ###                     "hommel", "bonferroni", "BH", "BY", "fdr"
+
+
+```
+
+
+ 
+#### Multiple comparisons to a control with Dunnett test (DescTools)
+
+**example data**
+
+
+
+```{r Multiple comparisons in Dunnetts with control example, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+
+DunnettTest(Aam ~ Location,
+            data = Data)
+
+```
+
+**sand data**
+
+
+
+```{r Multiple comparisons in Dunnetts with control sand, echo=FALSE, message=FALSE, warning=FALSE}
+summary_data_site =
+mutate(summary_data_site,
+       Location = factor(Descriptors, levels=unique(Descriptors)))
+
+DunnettTest(yield ~ Descriptors,
+            data = summary_data_site)
+
+```
+
+#### Multiple comparisons least square means
+
+**example data**
+
+
+* Least square means can be calculated for each group.  
+
+* Here a Tukey adjustment is applied for multiple comparisons among group least square means.  
+
+* The multiple comparisons can be displayed as a compact letter display.
+
+```{r Multiple comparision east square means example , include=TRUE} 
+
+#Multiple comparisons with least square means
+
+#library(lsmeans)
+#library(multcompView)
+
+leastsquare = lsmeans(model,
+                      pairwise ~ Location,
+                      adjust = "tukey")
+
+ 
+cld(leastsquare,
+    alpha   = 0.05,
+    Letters = letters,
+    adjust="tukey")
+```
+
+
+**sands data**
+
+
+
+```{r Multiple comparision east square means sand , include=TRUE} 
+
+#Multiple comparisons with least square means
+
+#library(lsmeans)
+#library(multcompView)
+
+leastsquare_sand = lsmeans(model_sand,
+                      pairwise ~ Descriptors,
+                      adjust = "tukey")
+
+ 
+cld(leastsquare_sand,
+    alpha   = 0.05,
+    Letters = letters,
+    adjust="tukey")
+```
+
+
+
+
+# Graphing the results 
+
+#### Boxplots
+
+**example data**
+
+* Simple box plots of values across groups
+
+* Box plots of values for each level of the independent variable for a one-way analysis of variance (ANOVA).
+ 
+```{r Graphing the results example , include=TRUE} 
+
+boxplot(Aam ~ Location,
+        data = Data,
+        ylab="aam / height",
+        xlab="Location")
+```
+
+**sands data**
+
+* ggplot
+ 
+```{r Graphing the results sand , include=TRUE} 
+
+summary_data_site %>% 
+ggplot(aes(Descriptors, yield))+
+  geom_boxplot()+ 
+  geom_point()+
+  theme(axis.text.x=element_text(angle=45,hjust=1))
+```
+
+ 
+
+#### barplots
+
+**example data**
+
+* Summarize the data frame (Data) into a table
+
+* summarySE - Not sure what this is doing it specifies a conf.interval.
+
+* Bar plot of means for each level of the independent variable for a one-way analysis of variance (ANOVA).
+
+
+```{r Summarize and Graphing the results example , include=TRUE} 
+#library(Rmisc)  
+
+Data2 = summarySE(data=Data,
+          "Aam",
+          groupvars="Location",
+          conf.interval = 0.95)
+
+Tabla = as.table(Data2$Aam)         
+rownames(Tabla) = Data2$Location
+
+Tabla
+
+barplot(Tabla,
+        ylab="aam / height",
+        xlab="Location")
+
+```
+
+
+
+
+
+* Bar plot of means with error bars across groups
+
+* Bar plot of means for each level of the independent variable of a one-way analysis of variance (ANOVA).  
+
+* Error indicates standard error of the mean.  
+
+* Bars sharing the same letter are not significantly different according to Tukey’s HSD test.
+
+
+
+```{r ggplot example, include=TRUE}  
+
+
+offset.v = -3     # offsets for mean letters
+offset.h = 0.5
+
+ggplot(Data2,
+       aes(x = Location, y = Aam,
+           ymax=0.12, ymin=0.0))  +
+       geom_bar(stat="identity", fill="gray50",
+           colour = "black", width = 0.7)  +
+       geom_errorbar(aes(ymax=Aam+se, ymin=Aam-se),
+                     width=0.0, size=0.5, color="black")  +
+       geom_text(aes(label=c("bc","c","a","bc","ab"), #manually set
+                 hjust=offset.h, vjust=offset.v)) +             
+       labs(x = "Sample location",
+            y = "aam / height")  +
+       ## ggtitle("Main title") +
+       theme_bw()  +
+       theme(panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_line(colour = "grey80"),
+             plot.title = element_text(size = rel(1.5),
+             face = "bold", vjust = 1.5),
+             axis.title = element_text(face = "bold"),
+             axis.title.y = element_text(vjust= 1.8),
+             axis.title.x = element_text(vjust= -0.5),
+             panel.border = element_rect(colour="black")
+             )
+
+```
+
+
+
+
+**sands data**
+
+
+* bar plots with group_by
+
+
+
+ 
+ 
+```{r Summarize and Graphing the results sand , include=TRUE} 
+
+
+data_summary <- summary_data_site %>% 
+  dplyr::group_by(Descriptors) %>%
+  dplyr::summarise(mean=mean(yield, na.rm = TRUE), 
+            sd=sd(yield, na.rm = TRUE),
+            count = n(),
+            std_error = sd/(sqrt(count))
+  ) %>%
+  arrange(desc(mean))
+
+max_yld <- max(summary_data_site$yield, na.rm = TRUE) 
+
+plot <- data_summary %>%  
+ggplot( aes(x = factor(Descriptors), y = mean)) + 
+  geom_bar(stat = "identity",  alpha = 0.5)  +
+  geom_errorbar(aes(ymin=mean-std_error, ymax=mean+std_error), width = 0.1) +
+  #labs(x="", y="Yield t/ha", title = paste(site_name,": ", year_selected),
+  labs(x="", y="Yield t/ha", 
+       #title = paste(site_name_output,": ", year_selected),
+       subtitle = "ANOVA with Tukey, threshold 0.05") +
+  theme_classic() + 
+  
+  #scale_y_continuous(breaks=seq(0,max_yld,by=0.5), limits = c(0, max_yld))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  theme(legend.position = c(0.1, 0.75)) +
+  # geom_text(aes(label=Tukey), 
+  #           position = position_dodge(0.80), 
+  #           size = 4,
+  #           vjust=-0.5, hjust=-0.5, 
+  #           colour = "gray25")+
+  theme(axis.text.x=element_text(angle=45,hjust=1))
+
+
+plot
+ 
+```
+
+* Add in the output of the agricolae HSD Tukey
+* Add the letters from the analysis to the graph
+
+
+```{r Summarize and Graphing the results with Tukey sand, message=FALSE, warning=FALSE, include=TRUE}
+
+#ensure the summaried data in a data frame and ungrouped
+data_summary <- as.data.frame(ungroup(data_summary))
+
+# Add in agricolae HSD Tukey letters 
+anova_sand_graph = lm( yield ~ Descriptors,
+                 data=summary_data_site)
+
+tukey_agricolae <- (HSD.test(anova_sand_graph, "Descriptors"))
+
+# I want to access the groups but its part of a list
+
+
+tukey_agricolae_df <- as.data.frame(tukey_agricolae[[5]]) #get the fith item in the list
+tukey_agricolae_df$Descriptors <- rownames(tukey_agricolae_df) #move rwo names into a clm for joining
+
+
+
+data_summary <- left_join(data_summary,tukey_agricolae_df)
+
+
+plot <- data_summary %>%  
+  ggplot( aes(x = factor(Descriptors), y = mean)) + 
+  geom_bar(stat = "identity",  alpha = 0.5)  +
+  geom_errorbar(aes(ymin=mean-std_error, ymax=mean+std_error), width = 0.1) +
+  #labs(x="", y="Yield t/ha", title = paste(site_name,": ", year_selected),
+  labs(x="", y="Yield t/ha", 
+       #title = paste(site_name_output,": ", year_selected),
+       subtitle = "ANOVA with agricolae HSD Tukey, threshold 0.05") +
+  theme_classic() + 
+  
+  #scale_y_continuous(breaks=seq(0,max_yld,by=0.5), limits = c(0, max_yld))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  theme(legend.position = c(0.1, 0.75)) +
+  geom_text(aes(label=groups),
+            position = position_dodge(0.80),
+            size = 4,
+            vjust=-0.5, hjust=-0.5,
+            colour = "gray25")+
+  theme(axis.text.x=element_text(angle=45,hjust=1))
+
+plot
+
+
+```
+
+#### barplots with LSD results 
+
+**sands data**
+
+```{r Summarize and Graphing the results with LSD sand, message=FALSE, warning=FALSE, include=TRUE}
+data_summary_LSD <- summary_data_site %>% 
+  dplyr::group_by(Descriptors) %>%
+  dplyr::summarise(mean=mean(yield, na.rm = TRUE), 
+                   sd=sd(yield, na.rm = TRUE),
+                   count = n(),
+                   std_error = sd/(sqrt(count))
+  ) %>%
+  arrange(desc(mean))
+
+max_yld <- max(summary_data_site$yield, na.rm = TRUE) 
+
+data_summary_LSD <- as.data.frame(ungroup(data_summary_LSD))
+
+
+agricolae_LSD_output_sand <- (LSD.test(model_sand, "Descriptors",   # outer parentheses print result
+                                       alpha = 0.05,      
+                                       p.adj="none"))      # see ?p.adjust for options"none" is t-student.
+
+
+
+
+#Extract the LSD value from the anlsysis and add it to the summary data
+LSD <- agricolae_LSD_output_sand$statistics$LSD
+
+data_summary_LSD <- data_summary_LSD %>% 
+  mutate(LSD = LSD)
+#Extract the LSD letters from the anlsysis and add it to the summary data
+
+agricolae_LSD_output_sand_df <- as.data.frame(agricolae_LSD_output_sand[[5]]) #get the fith item in the list
+agricolae_LSD_output_sand_df$Descriptors <- rownames(agricolae_LSD_output_sand_df) #move rwo names into a clm for joining
+
+
+data_summary_LSD <- left_join(data_summary_LSD,agricolae_LSD_output_sand_df)
+
+plot_LSD <- data_summary_LSD %>%  
+  ggplot( aes(x = factor(Descriptors), y = mean)) + 
+  geom_bar(stat = "identity",  alpha = 0.5)  +
+  geom_errorbar(aes(ymin=mean-std_error, ymax=mean+std_error), width = 0.1) +
+  #labs(x="", y="Yield t/ha", title = paste(site_name,": ", year_selected),
+  labs(x="", y="Yield t/ha", 
+       #title = paste(site_name_output,": ", year_selected),
+       subtitle = "ANOVA with agricolae LSD, threshold 0.05") +
+  theme_classic() + 
+  
+  #scale_y_continuous(breaks=seq(0,max_yld,by=0.5), limits = c(0, max_yld))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  theme(legend.position = c(0.1, 0.75)) +
+  geom_text(aes(label=groups),
+            position = position_dodge(0.80),
+            size = 4,
+            vjust=-0.5, hjust=-0.5,
+            colour = "gray25")+
+  theme(axis.text.x=element_text(angle=45,hjust=1))
+
+plot_LSD
+
+```
+
+
+#### barplots with Dunnets results 
+
+**sands data**
+
+
+
+```{r Summarize and Graphing the results with dunnets sand, message=FALSE, warning=FALSE, include=TRUE}
+data_summary_Dunnets <- summary_data_site %>% 
+  dplyr::group_by(Descriptors) %>%
+  dplyr::summarise(mean=mean(yield, na.rm = TRUE), 
+                   sd=sd(yield, na.rm = TRUE),
+                   count = n(),
+                   std_error = sd/(sqrt(count))
+  ) %>%
+  arrange(desc(mean))
+
+max_yld <- max(summary_data_site$yield, na.rm = TRUE) 
+
+data_summary_Dunnets <- as.data.frame(ungroup(data_summary_Dunnets))
+
+
+
+
+
+
+DunnettTest <- DunnettTest(yield ~ Descriptors,
+            data = summary_data_site,
+            control = "Control")
+
+DunnettTest_df <- as.data.frame(DunnettTest[[1]]) #get the fith item in the list
+DunnettTest_df$Descriptors_control <- rownames(DunnettTest_df) #move rwo names into a clm for joining
+
+## strip the control from the descriptor name
+DunnettTest_df <- DunnettTest_df %>% 
+  mutate(Descriptors = str_replace(Descriptors_control, "(-Control)", ""))
+
+
+#Add in the significance ***
+
+DunnettTest_df <- DunnettTest_df %>% 
+  mutate(significance_control = case_when(
+    pval < 0.001 ~ "***",
+    pval <= 0.01 ~  "**",
+    pval <= 0.05 ~  "*",
+    pval >  0.05 ~  "ns",
+    TRUE ~ "check"
+    
+  ))
+DunnettTest_df <- DunnettTest_df %>% 
+  dplyr::select(Descriptors, pval, significance_control)
+
+
+#join it the summary data
+
+data_summary_Dunnets <- left_join(data_summary_Dunnets, DunnettTest_df)
+
+
+#rename the clms so they are more reflect the test 
+data_summary_Dunnets <- data_summary_Dunnets %>% 
+  dplyr::rename("pval_Dunnets" = "pval")
+
+
+
+plot_Dunnets <- data_summary_Dunnets %>%  
+  ggplot( aes(x = factor(Descriptors), y = mean)) + 
+  geom_bar(stat = "identity",  alpha = 0.5)  +
+  geom_errorbar(aes(ymin=mean-std_error, ymax=mean+std_error), width = 0.1) +
+  #labs(x="", y="Yield t/ha", title = paste(site_name,": ", year_selected),
+  labs(x="", y="Yield t/ha", 
+       #title = paste(site_name_output,": ", year_selected),
+       subtitle = "ANOVA with Dunnets, threshold 0.05") +
+  theme_classic() + 
+  
+  #scale_y_continuous(breaks=seq(0,max_yld,by=0.5), limits = c(0, max_yld))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  theme(legend.position = c(0.1, 0.75)) +
+  geom_text(aes(label=significance_control),
+            position = position_dodge(0.80),
+            size = 4,
+            vjust=-0.5, hjust=-0.2,
+            colour = "gray25")+
+  theme(axis.text.x=element_text(angle=45,hjust=1))
+
+plot_Dunnets
+
+
+
+```
+
+
+
+I think the best options is the Dunnets.
+It seems to make the most sense to me.
+There is a lot of trials and this is just comparing the control.
+I am not that familiar with this test though.
+
+Maybe the best approach is to do all of the tests and then we can work out the best one afterwards.
+I just hope I am outputting the most appropriate values for reporting later.
+
+
+#### data set of results with HSD Tukey, LSD and Dunnets results 
+
+```{r Summarize with HSD Tukey LSD and Dunnets results sand, message=FALSE, warning=FALSE, include=FALSE,  message=FALSE}
+
+data_summary_all_analysis <- summary_data_site %>% 
+  dplyr::group_by(Descriptors) %>%
+  dplyr::summarise(mean=mean(yield, na.rm = TRUE), 
+                   sd=sd(yield, na.rm = TRUE),
+                   count = n(),
+                   std_error = sd/(sqrt(count))
+  ) %>%
+  arrange(desc(mean))
+
+max_yld <- max(summary_data_site$yield, na.rm = TRUE) 
+
+data_summary_all_analysis <- as.data.frame(ungroup(data_summary_all_analysis))
+data_summary_all_analysis
+
+########################################################################################################################################################
+#### agricolae_LSD
+agricolae_LSD_output_sand <- (LSD.test(model_sand, "Descriptors",   # outer parentheses print result
+                                       alpha = 0.05,      
+                                       p.adj="none"))      # see ?p.adjust for options"none" is t-student.
+
+
+
+
+#Extract the LSD value from the anlsysis and add it to the summary data
+LSD <- agricolae_LSD_output_sand$statistics$LSD
+
+
+#Extract the LSD letters from the anlsysis and add it to the summary data
+
+agricolae_LSD_output_sand_df <- as.data.frame(agricolae_LSD_output_sand[[5]]) #get the fith item in the list
+agricolae_LSD_output_sand_df$Descriptors <- rownames(agricolae_LSD_output_sand_df) #move rwo names into a clm for joining
+
+agricolae_LSD_output_sand_df <- agricolae_LSD_output_sand_df %>% 
+  mutate(LSD = LSD)
+  
+data_summary_all_analysis <- left_join(data_summary_all_analysis,agricolae_LSD_output_sand_df)
+
+data_summary_all_analysis <- dplyr::select(data_summary_all_analysis, -yield) %>% 
+  dplyr::rename(groups_LSD = groups)
+data_summary_all_analysis
+
+########################################################################################################################################################
+#### agricolae_HSD.test
+
+tukey_agricolae <- (HSD.test(anova_sand_graph, "Descriptors"))
+
+# I want to access the groups but its part of a list
+
+
+tukey_agricolae_df <- as.data.frame(tukey_agricolae[[5]]) #get the fith item in the list
+tukey_agricolae_df$Descriptors <- rownames(tukey_agricolae_df) #move rwo names into a clm for joining
+
+data_summary_all_analysis <- left_join(data_summary_all_analysis,tukey_agricolae_df)
+data_summary_all_analysis <- dplyr::select(data_summary_all_analysis, -yield) %>% 
+  dplyr::rename(groups_HSD_Tukey = groups)
+data_summary_all_analysis
+
+
+data_summary_all_analysis
+
+########################################################################################################################################################
+### Dunnet test
+
+DunnettTest <- DunnettTest(yield ~ Descriptors,
+            data = summary_data_site,
+            control = "Control")
+
+DunnettTest_df <- as.data.frame(DunnettTest[[1]]) #get the fith item in the list
+DunnettTest_df$Descriptors_control <- rownames(DunnettTest_df) #move rwo names into a clm for joining
+
+## strip the control from the descriptor name
+DunnettTest_df <- DunnettTest_df %>% 
+  mutate(Descriptors = str_replace(Descriptors_control, "(-Control)", ""))
+
+
+#Add in the significance ***
+
+DunnettTest_df <- DunnettTest_df %>% 
+  mutate(significance_control = case_when(
+    pval < 0.001 ~ "***",
+    pval <= 0.01 ~  "**",
+    pval <= 0.05 ~  "*",
+    pval >  0.05 ~  "ns",
+    TRUE ~ "check"
+    
+  ))
+DunnettTest_df <- DunnettTest_df %>% 
+  dplyr::select(Descriptors, pval, significance_control)
+
+
+#join it the summary data
+
+data_summary_all_analysis <- left_join(data_summary_all_analysis, DunnettTest_df)
+
+
+#rename the clms so they are more reflect the test 
+data_summary_all_analysis <- data_summary_all_analysis %>% 
+  dplyr::rename("pval_Dunnets" = "pval")
+
+
+data_summary_all_analysis
+
+
+
+
+```
+
+
+The next step will be working out how to write this as a function and then running it as a batch
+Also need to do the same thing for cumulative yield
